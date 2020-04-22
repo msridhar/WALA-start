@@ -29,19 +29,26 @@ import com.ibm.wala.classLoader.IMethod;
 import com.ibm.wala.classLoader.Module;
 import com.ibm.wala.classLoader.SourceModule;
 import com.ibm.wala.classLoader.SourceURLModule;
+import com.ibm.wala.ipa.callgraph.CGNode;
 import com.ibm.wala.ipa.callgraph.IAnalysisCacheView;
 import com.ibm.wala.ipa.callgraph.AnalysisScope;
 import com.ibm.wala.ipa.callgraph.CallGraph;
 import com.ibm.wala.ipa.callgraph.Entrypoint;
+import com.ibm.wala.ipa.callgraph.propagation.InstanceKey;
+import com.ibm.wala.ipa.callgraph.propagation.PointerAnalysis;
+import com.ibm.wala.ipa.callgraph.propagation.PointerKey;
 import com.ibm.wala.ipa.callgraph.propagation.PropagationCallGraphBuilder;
+import com.ibm.wala.ipa.callgraph.propagation.SSAContextInterpreter;
 import com.ibm.wala.ipa.callgraph.propagation.SSAPropagationCallGraphBuilder;
 import com.ibm.wala.ipa.callgraph.propagation.cfa.ZeroXInstanceKeys;
 import com.ibm.wala.ipa.cha.ClassHierarchyException;
 import com.ibm.wala.ipa.cha.IClassHierarchy;
 import com.ibm.wala.ssa.IRFactory;
+import com.ibm.wala.ssa.IRView;
 import com.ibm.wala.util.CancelException;
 import com.ibm.wala.util.WalaException;
 import com.ibm.wala.util.collections.HashSetFactory;
+import com.ibm.wala.util.collections.Iterator2Iterable;
 import com.ibm.wala.util.io.FileProvider;
 
 /**
@@ -142,11 +149,41 @@ public class JSCallGraphBuilderUtil extends com.ibm.wala.cast.js.ipa.callgraph.J
     return makeScriptCG(dir, name, CGBuilderType.ZERO_ONE_CFA, loader);
   }
 
+  public static void myDumpCG(
+      SSAContextInterpreter interp, PointerAnalysis<? extends InstanceKey> PA, CallGraph CG) {
+    for (CGNode N : CG) {
+      System.err.print("callees of node " + getShortName(N) + " : [");
+      boolean fst = true;
+      for (CGNode n : Iterator2Iterable.make(CG.getSuccNodes(N))) {
+        if (fst) fst = false;
+        else System.err.print(", ");
+        System.err.print(getShortName(n));
+      }
+      System.err.println("]");
+      System.err.println("\nIR of node " + N.getGraphNodeId() + ", context " + N.getContext());
+      IRView ir = interp.getIRView(N);
+      if (ir != null) {
+        System.err.println(ir);
+      } else {
+        System.err.println("no IR!");
+      }
+    }
+
+    System.err.println("pointer analysis");
+    for (PointerKey n : PA.getPointerKeys()) {
+      try {
+        System.err.println((n + " --> " + PA.getPointsToSet(n)));
+      } catch (Throwable e) {
+        System.err.println(("error computing set for " + n));
+      }
+    }
+  }
+
   public static CallGraph makeScriptCG(String dir, String name, CGBuilderType builderType, ClassLoader loader) throws IOException,
       IllegalArgumentException, CancelException, WalaException {
-    PropagationCallGraphBuilder b = makeScriptCGBuilder(dir, name, builderType, loader);
+    SSAPropagationCallGraphBuilder b = makeScriptCGBuilder(dir, name, builderType, loader);
     CallGraph CG = b.makeCallGraph(b.getOptions());
-    // dumpCG(b.getPointerAnalysis(), CG);
+    myDumpCG(b.getCFAContextInterpreter(), b.getPointerAnalysis(), CG);
     return CG;
   }
 
